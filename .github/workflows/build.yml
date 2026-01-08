@@ -10,18 +10,18 @@ jobs:
 
     steps:
     - name: 1. 检出仓库
-      uses: actions/checkout@v4 # 升级到 v4
+      uses: actions/checkout@v4
 
     - name: 2. 最大化磁盘空间
       run: |
         sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
         sudo apt-get clean
-        df -h
 
     - name: 3. 安装编译依赖
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc build-essential zip curl libstdc++6 git wget python3 python3-pip libssl-dev rsync flex bison gperf libxml2-utils libncurses5 python-is-python3
+        # 针对 Ubuntu 24.04 优化的依赖包列表
+        sudo apt-get install -y bc build-essential zip curl libstdc++6 git wget python3 python3-pip libssl-dev rsync flex bison gperf libxml2-utils libncurses-dev python-is-python3
         sudo curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
         sudo chmod a+x /usr/local/bin/repo
 
@@ -52,7 +52,7 @@ jobs:
         make -j4 
 
     - name: 6. 上传刷机包
-      uses: actions/upload-artifact@v4 # 升级到 v4
+      uses: actions/upload-artifact@v4
       with:
         name: AOSP-11-Sagit-Vanilla-ROM
         path: aosp/out/target/product/sagit/*.zip
