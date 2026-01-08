@@ -12,13 +12,17 @@ jobs:
     - name: 1. 检出仓库
       uses: actions/checkout@v4
 
-    - name: 2. 暴力清理磁盘空间 (解决空间不足)
-      run: |
-        # 删除不需要的巨型工具链，释放约 20GB+ 空间
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /usr/share/swift /usr/local/share/powershell /var/lib/mongodb
-        sudo apt-get clean
-        # 检查清理后的空间
-        df -h
+    - name: 2. 深度清理磁盘 (腾出 70GB 空间)
+      # 使用专门的开源动作清理不必要的预装软件
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
 
     - name: 3. 安装编译依赖
       run: |
@@ -27,11 +31,12 @@ jobs:
         sudo curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
         sudo chmod a+x /usr/local/bin/repo
 
-    - name: 4. 同步源码 (再次尝试)
+    - name: 4. 同步源码
       run: |
         git config --global user.email "build@aosp.com"
         git config --global user.name "AOSP Builder"
         mkdir aosp && cd aosp
+        # 使用 --depth=1 极简克隆，只下载最新代码
         repo init -u https://android.googlesource.com/platform/manifest -b android-11.0.0_r40 --depth=1
         mkdir .repo/local_manifests
         cat <<EOF > .repo/local_manifests/sagit.xml
@@ -44,7 +49,7 @@ jobs:
           <project name="AOSP-11/kernel_xiaomi_msm8998" path="kernel/xiaomi/msm8998" remote="github" revision="11" />
         </manifest>
         EOF
-        # 增加 --no-tags 进一步节省空间
+        # 增加 --no-tags 和 --force-sync 极致节省空间
         repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
     - name: 5. 开始编译
@@ -53,6 +58,7 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
         breakfast sagit
+        # 限制并发，防止内存溢出导致任务失败
         make -j4 
 
     - name: 6. 上传刷机包
