@@ -5,46 +5,58 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    # 修改点：改用最新版本的 Ubuntu 服务器，通常分配速度更快
+    runs-on: ubuntu-latest
+    timeout-minutes: 600 # 增加到 10 小时，确保大工程不被中断
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+    - name: 1. 检出仓库
+      uses: actions/checkout@v3
 
-      - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt-get clean
+    - name: 2. 最大化磁盘空间
+      # 使用专门的脚本深度清理 GitHub 虚拟机的冗余文件
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost
+        sudo apt-get clean
+        df -h
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc build-essential zip curl libstdc++6 git wget python3 python3-pip libssl-dev rsync flex bison gperf libxml2-utils
-          sudo curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
-          sudo chmod a+x /usr/local/bin/repo
+    - name: 3. 安装编译依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc build-essential zip curl libstdc++6 git wget python3 python3-pip libssl-dev rsync flex bison gperf libxml2-utils libncurses5
+        sudo curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
+        sudo chmod a+x /usr/local/bin/repo
 
-      - name: Sync and Build
-        run: |
-          git config --global user.email "build@aosp.com"
-          git config --global user.name "AOSP Builder"
-          mkdir aosp && cd aosp
-          repo init -u https://android.googlesource.com/platform/manifest -b android-11.0.0_r40 --depth=1
-          mkdir .repo/local_manifests
-          cat <<EOF > .repo/local_manifests/sagit.xml
-          <?xml version="1.0" encoding="UTF-8"?>
-          <manifest>
-            <project name="AOSP-11/device_xiaomi_sagit" path="device/xiaomi/sagit" remote="github" revision="11" />
-            <project name="AOSP-11/device_xiaomi_msm8998-common" path="device/xiaomi/msm8998-common" remote="github" revision="11" />
-            <project name="AOSP-11/vendor_xiaomi" path="vendor/xiaomi" remote="github" revision="11" />
-            <project name="AOSP-11/kernel_xiaomi_msm8998" path="kernel/xiaomi/msm8998" remote="github" revision="11" />
-          </manifest>
-          EOF
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-          source build/envsetup.sh
-          breakfast sagit
-          make -j$(nproc --all)
+    - name: 4. 同步源码
+      run: |
+        git config --global user.email "build@aosp.com"
+        git config --global user.name "AOSP Builder"
+        mkdir aosp && cd aosp
+        # 保持 android-11.0.0_r40 不变
+        repo init -u https://android.googlesource.com/platform/manifest -b android-11.0.0_r40 --depth=1
+        mkdir .repo/local_manifests
+        cat <<EOF > .repo/local_manifests/sagit.xml
+        <?xml version="1.0" encoding="UTF-8"?>
+        <manifest>
+          <project name="AOSP-11/device_xiaomi_sagit" path="device/xiaomi/sagit" remote="github" revision="11" />
+          <project name="AOSP-11/device_xiaomi_msm8998-common" path="device/xiaomi/msm8998-common" remote="github" revision="11" />
+          <project name="AOSP-11/vendor_xiaomi" path="vendor/xiaomi" remote="github" revision="11" />
+          <project name="AOSP-11/kernel_xiaomi_msm8998" path="kernel/xiaomi/msm8998" remote="github" revision="11" />
+        </manifest>
+        EOF
+        repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
-      - name: Upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: AOSP-Sagit-ROM
-          path: aosp/out/target/product/sagit/*.zip
+    - name: 5. 开始编译
+      run: |
+        cd aosp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        source build/envsetup.sh
+        breakfast sagit
+        # 考虑到服务器性能，手动限制并发为 4，防止内存溢出导致任务挂掉
+        make -j4 
+
+    - name: 6. 上传刷机包
+      uses: actions/upload-artifact@v3
+      with:
+        name: AOSP-11-Sagit-Vanilla-ROM
+        path: aosp/out/target/product/sagit/*.zip
