@@ -1,24 +1,22 @@
 name: Build AOSP 11 for Sagit (No GMS)
 
 on:
-  workflow_dispatch: # 手动触发编译
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-20.04
-    # 设置超时时间为 6 小时（GitHub 最大上限）
     timeout-minutes: 360
 
     steps:
     - name: 1. 检出仓库
       uses: actions/checkout@v3
 
-    - name: 2. 清理环境空间 (极其重要)
+    - name: 2. 清理环境空间
       run: |
         docker rmi $(docker images -q)
         sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android /opt/ghc
         sudo apt-get clean
-        df -h # 显示清理后的磁盘空间
 
     - name: 3. 安装编译依赖
       run: |
@@ -32,10 +30,7 @@ jobs:
         git config --global user.email "build@aosp.com"
         git config --global user.name "AOSP Builder"
         mkdir aosp && cd aosp
-        # 使用 --depth=1 进行浅克隆以节省大量空间
         repo init -u https://android.googlesource.com/platform/manifest -b android-11.0.0_r40 --depth=1
-        
-        # 创建 Local Manifest 放入你提供的仓库地址（移除 GMS 以节省空间）
         mkdir .repo/local_manifests
         cat <<EOF > .repo/local_manifests/sagit.xml
         <?xml version="1.0" encoding="UTF-8"?>
@@ -46,28 +41,18 @@ jobs:
           <project name="AOSP-11/kernel_xiaomi_msm8998" path="kernel/xiaomi/msm8998" remote="github" revision="11" />
         </manifest>
         EOF
-        
-        # 开始同步 (这一步可能需要 40-60 分钟)
         repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
-    - name: 5. 开始编译基础版
+    - name: 5. 开始编译
       run: |
         cd aosp
         export ALLOW_MISSING_DEPENDENCIES=true
         source build/envsetup.sh
-        
-        # 选择小米6 (sagit)
         breakfast sagit
-        
-        # 记录开始时间
-        echo "Build started at $(date)"
-        # 使用全部线程进行编译
         make -j$(nproc --all)
-        echo "Build finished at $(date)"
 
     - name: 6. 上传刷机包
       uses: actions/upload-artifact@v3
       with:
         name: AOSP-11-Sagit-Vanilla-ROM
-        # 匹配编译生成的 zip 包
         path: aosp/out/target/product/sagit/*.zip
